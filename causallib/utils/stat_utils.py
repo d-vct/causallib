@@ -247,7 +247,9 @@ def robust_lookup(df, indexer):
     """
     # Convert the index into 
     idx, col = indexer.factorize()  # convert text labels into integers
-    extracted = df.reindex(col, axis=1).reindex(indexer.index, axis=0)  # make sure the columns exist and the indeces are the same
+    extracted = df
+    extracted.columns = col
+    extracted = df.reindex(index=indexer.index)  # make sure the columns exist and the indeces are the same
     extracted = extracted.to_numpy()[range(len(idx)), idx]  # numpy accesses by location, not by named index
     extracted = pdSeries(extracted, index=indexer.index)
     return extracted
