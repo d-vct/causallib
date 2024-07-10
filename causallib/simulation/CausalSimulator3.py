@@ -68,9 +68,18 @@ class CausalSimulator3(object):
         None: lambda x, beta=None: x
     }
 
+    CHECK_BETA = {
+        "linear": lambda parents_idx, beta, var=None: CausalSimulator3._check_linear_link_beta(parents_idx, beta, var),
+        "affine": lambda parents_idx, beta, var=None: CausalSimulator3._check_affine_link_beta(parents_idx, beta, var),
+        "exp": lambda parents_idx, beta, var=None: CausalSimulator3._check_affine_link_beta(parents_idx, beta, var),
+        "log": lambda parents_idx, beta, var=None: CausalSimulator3._check_affine_link_beta(parents_idx, beta, var),
+        "poly": lambda parents_idx, beta, var=None: CausalSimulator3._check_poly_link_beta(parents_idx, beta, var),
+        "marginal_structural_model": lambda parents_idx, treatment_categories,  beta, var=None: CausalSimulator3._check_marginal_structural_model_link_beta(parents_idx, treatment_categories, beta, var)
+    }
+
     def __init__(self, topology, var_types, prob_categories, link_types, snr, treatment_importances,
                  treatment_methods="gaussian", outcome_types=CATEGORICAL, effect_sizes=None,
-                 survival_distribution="expon", survival_baseline=1, params=None):
+                 survival_distribution="expon", survival_baseline=1, linking_coefs=None, params=None):
         """
         Constructor
 
@@ -148,6 +157,7 @@ class CausalSimulator3(object):
                                                 the list. If all outcome variables has the same survival distribution -
                                                 pass the str value.
                                                 *Ignore if no outcome variable is of type survival*
+            linking_coefs (dict | None): A dictionary mapping between variable names and their corresponding coefficients
             params (dict | None): Various parameters related to the generation process (e.g. the slope for
                                         sigmoid-based functions etc.).
                                         The form of: {var_name: {param_name: param_value, ...}, ...}
@@ -162,8 +172,6 @@ class CausalSimulator3(object):
         self.hidden_indices = var_types[var_types == HIDDEN].index
         self.censor_indices = var_types[var_types == CENSOR].index
         self.effmod_indices = var_types[var_types == EFFECT_MODIFIER].index
-
-        self.linking_coefs = {}  # will accumulate the generated coefficients. {var: Series(coef, predecessors)}
 
         # COMPLETE topology INTO A SQUARE ADJACENCY MATRIX:
         # # let M be number of total variables, H number of variables to generate and L=M-H number of variables in a
@@ -274,6 +282,28 @@ class CausalSimulator3(object):
                 raise ValueError("Categorical outcome must be associated with category probability. However, None was"
                                  "associated with variable {outcome_var}".format(outcome_var=i))
 
+        # check linking coefs have right format
+        if linking_coefs:
+            for var in self.var_names:
+                predecessors = list(self.graph_topology.predecessors(var))
+                if len(predecessors) > 0:
+                    if var not in linking_coefs.keys():
+                        linking_coefs[var] = None
+                        warnings.warn("Variable {} has no linking coefficients specified. Set to random.".format(var), UserWarning)
+                    else:
+                        # check format
+                        link_type = self.link_types[var]
+                        if link_type == "marginal_structural_model":
+                            if not self.CHECK_BETA[link_type](predecessors, self.prob_categories[self.treatment_indices[0]], linking_coefs[var], var):
+                                linking_coefs[var] = None
+                                warnings.warn("Linking coefficients for variable {} are not in the right format. Set to random.".format(var), UserWarning)
+                        elif not self.CHECK_BETA[link_type](predecessors, linking_coefs[var], var):
+                                linking_coefs[var] = None
+                                warnings.warn("Linking coefficients for variable {} are not in the right format. Set to random.".format(var), UserWarning)
+            self.linking_coefs = linking_coefs
+        else:
+            self.linking_coefs = {}  # will accumulate the generated coefficients. {var: Series(coef, predecessors)}
+        
         self.effect_sizes = self._map_properties_to_variables(values=effect_sizes, keys=self.outcome_indices,
                                                               var_type="outcome", value_type="effect size")
 
@@ -1252,6 +1282,30 @@ class CausalSimulator3(object):
                              index=X_parents.columns)
         x_new = X_parents.dot(beta)  # type: pd.Series
         return x_new, beta
+    
+    @staticmethod
+    def _check_linear_link_beta(parents_idx, beta, var=None):
+        """
+        Check if the given beta coefficients are legitimate for the given parents data.
+        Args:
+            parents_idx (Sequence[str]): a (num_parents) list containing the var names of the variables which are topological parents of the current
+                                      variable
+            beta (pd.Series): a given Series which index corresponds to the parents variables
+                              (parents_idx)
+
+        Returns:
+            bool: True if the beta coefficients are legitimate, False otherwise.
+        """
+        if beta is None:
+            return False
+        if beta.shape[0] != len(parents_idx):
+            warnings.warn("Linking coefficients for variable {} have length {} but should have length {}. Set to random.".format(var, beta.shape[0], len(parents_idx)), UserWarning)
+            return False
+        if set(beta.index) != set(parents_idx):
+            warnings.warn("Linking coefficients for variable {} index {} do match predecessors {}. Set to random.".format(var, beta.index, parents_idx), UserWarning)
+            return False
+        return True
+
 
     @staticmethod
     def _affine_link(X_parents, beta=None):
@@ -1273,6 +1327,29 @@ class CausalSimulator3(object):
         X_parents = X_parents.copy()  # type: pd.DataFrame
         X_parents["intercept"] = 1
         return CausalSimulator3._linear_link(X_parents, beta=beta)
+
+    @staticmethod
+    def _check_affine_link_beta(parents_idx, beta, var=None):
+        """
+        Check if the given beta coefficients are legitimate for the given parents data.
+        Args:
+            parents_idx (Sequence[str]): a (num_parents) list containing the var names of the variables which are topological parents of the current
+                                      variable
+            beta (pd.Series): a given Series which index corresponds to the parents variables
+                              (parents_idx) plus an intercept term
+
+        Returns:
+            bool: True if the beta coefficients are legitimate, False otherwise.
+        """
+        if beta is None:
+            return False
+        if beta.shape[0] != len(parents_idx)+1:
+            warnings.warn("Linking coefficients for variable {} have length {} but should have length {}. Set to random.".format(var, beta.shape[0], len(parents_idx)+1), UserWarning)
+            return False
+        if set(beta.index) != set(parents_idx+["intercept"]):
+            warnings.warn("Linking coefficients for variable {} index {} do match predecessors {}. Set to random.".format(var, beta.index, parents_idx), UserWarning)
+            return False
+        return True
 
     @staticmethod
     def _exp_linking(X_parents, beta=None):
@@ -1356,6 +1433,30 @@ class CausalSimulator3(object):
         return x_new, beta
 
     @staticmethod
+    def _check_poly_link_beta(parents_idx, beta, var=None):
+        """
+        Check if the given beta coefficients are legitimate for the given parents data.
+        Args:
+            parents_idx (Sequence[str]): a (num_parents) list containing the var names of the variables which are topological parents of the current
+                                      variable
+            beta (pd.DataFrame): a given matrix of (degree x num_parents) specifying the coefficients where
+                                 each row corresponds to a degree (e.g. the first (zeroth) row corresponds to the
+                                 zeroth order of the polynomial and each column correspond to a parent variable.
+
+        Returns:
+            bool: True if the beta coefficients are legitimate, False otherwise.
+        """
+        if beta is None:
+            return False
+        if beta.shape[1] != len(parents_idx):
+            warnings.warn("Linking coefficients for variable {} have length {} but should have length {}. Set to random.".format(var, beta.shape[1], len(parents_idx)+1), UserWarning)
+            return False
+        if set(beta.columns) != set(parents_idx):
+            warnings.warn("Linking coefficients for variable {} columns {} do match predecessors {}. Set to random.".format(var, beta.columns, parents_idx), UserWarning)
+            return False
+        return True
+
+    @staticmethod
     def _marginal_structural_model_link(X_covariates, X_effmod, X_treatment, beta=None):
         """
         Generate outcome variable based on marginal structural model (see Hernan and Robin sections 12.4 and 12.5)
@@ -1393,6 +1494,33 @@ class CausalSimulator3(object):
         cf = X_parents.dot(beta)  # type: pd.DataFrame
         x_outcome = robust_lookup(cf, X_treatment)
         return x_outcome, cf, beta
+
+    @staticmethod
+    def _check_marginal_structural_model_link_beta(parents_idx, treatment_categories, beta, var=None):
+        """
+        Check if the given beta coefficients are legitimate for the given parents data.
+        Args:
+            parents_idx (Sequence[str]): a (num_parents) list containing the var names of the variables which are topological parents of the current
+                                      variable
+            treatment_categories (Sequence[float]): The possible treatment categories.
+            beta (pd.DataFrame): beta (pd.DataFrame): The coefficients used to generate current variable from it predecessors. Optional.
+                                (num_parents_variables x num_treatment_categories) matrix.
+
+        Returns:
+            bool: True if the beta coefficients are legitimate, False otherwise.
+        """
+        if beta is None:
+            return False
+        if beta.shape[0] != len(parents_idx):
+            warnings.warn("Linking coefficients for variable {} have length {} but should have length {}. Set to random.".format(var, beta.shape[1], len(parents_idx)+1), UserWarning)
+            return False
+        if beta.shape[1] != len(treatment_categories):
+            warnings.warn("Linking coefficients for variable {} have length {} but should have length {}. Set to random.".format(var, beta.shape[1], len(parents_idx)+1), UserWarning)
+            return False
+        if set(beta.index) != set(parents_idx):
+            warnings.warn("Linking coefficients for variable {} columns {} do match predecessors {}. Set to random.".format(var, beta.columns, parents_idx), UserWarning)
+            return False
+        return True
 
     # ### SAVING DATASET ### #
     def format_for_training(self, X, propensities, cf, headers_chars=None, exclude_hidden_vars=True):
