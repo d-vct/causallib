@@ -786,8 +786,9 @@ class CausalSimulator3(object):
         elif outcome_type == PROBABILITY:
             params = self.params.get(var_name, {})
             slope = params.get("slope", 1.0) if params is not None else 1.0
-            x_outcome = self._sigmoid(x_outcome, slope=slope)
-            cf = {i: self._sigmoid(cf[i], slope=slope) for i in list(cf.keys())}
+            x_midpoint = x_outcome.quantile(prob_category[0], interpolation="higher") if prob_category is not None else 0.0
+            x_outcome = self._sigmoid(x_outcome, slope=slope, x_midpoint=x_midpoint)
+            cf = {i: self._sigmoid(cf[i], slope=slope, x_midpoint=x_midpoint) for i in list(cf.keys())}
             if effect_size is not None:
                 if effect_size >= -1 and effect_size <= 1:
                     mean_ate = cf[1].mean() - cf[0].mean()
