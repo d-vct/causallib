@@ -784,8 +784,10 @@ class CausalSimulator3(object):
             pass
 
         elif outcome_type == PROBABILITY:
-            x_outcome = self._sigmoid(x_outcome)
-            cf = {i: self._sigmoid(cf[i]) for i in list(cf.keys())}
+            params = self.params.get(var_name, {})
+            slope = params.get("slope", 1.0) if params is not None else 1.0
+            x_outcome = self._sigmoid(x_outcome, slope=slope)
+            cf = {i: self._sigmoid(cf[i], slope=slope) for i in list(cf.keys())}
             if effect_size is not None:
                 if effect_size >= -1 and effect_size <= 1:
                     mean_ate = cf[1].mean() - cf[0].mean()
