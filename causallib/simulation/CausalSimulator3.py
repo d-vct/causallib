@@ -1127,7 +1127,7 @@ class CausalSimulator3(object):
         Returns:
             treatment (pd.Series): A vector (length of propensity.index) of the resulted sampling.
         """
-        treatment = propensity.apply(lambda x: np.random.choice(a=propensity.columns, p=x.values.astype(float), size=(1)), axis="columns")
+        treatment = propensity.apply(lambda x: np.random.choice(a=propensity.columns, p=x.values.astype(float), size=(1))[0], axis="columns")
         # treatment = pd.Series(index=index_names)
         # for i in treatment.index:
         #     treatment[i] = np.random.choice(prob_category.index, [propensity.loc[i, :]])
