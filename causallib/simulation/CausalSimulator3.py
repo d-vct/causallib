@@ -63,8 +63,8 @@ class CausalSimulator3(object):
                          "poly": lambda x, beta=None: CausalSimulator3._poly_linking(x, beta)}
     # O for outcome - outcome specific linking
     O_LINKING_METHODS = {
-        "marginal_structural_model": lambda x, t, m, beta=None: CausalSimulator3._marginal_structural_model_link(
-            x, t, m, beta=beta),
+        "marginal_structural_model": lambda x, t, m, t_cat_match, beta=None: CausalSimulator3._marginal_structural_model_link(
+            x, t, m, t_cat_match,beta=beta),
         None: lambda x, beta=None: x
     }
 
@@ -691,7 +691,7 @@ class CausalSimulator3(object):
         treatment_importance = treatment_importance or self.treatment_importances.get(treatment_parent)
 
         original_treatment_categories = X_treatment.unique().astype(int)  # before being manipulated
-
+        treatment_categories_match = {item: item for item in original_treatment_categories}
         # convexly re-weight variables according if treatment has different importance than the covariates:
         if treatment_importance is not None:
             # !knowingly not weighting (especially weighting-down) effect modifiers! (so only re-weighting covariates)
@@ -699,6 +699,8 @@ class CausalSimulator3(object):
             if not X_covariates.columns.empty:  # how much non-treatments (regular covariates) affect outcome
                 X_covariates *= float(float(1 - treatment_importance) / X_covariates.columns.size)
             X_parents = pd.concat([X_covariates, X_effmod, X_treatment], axis="columns", ignore_index=False)
+            treatment_categories_match = {key: value * treatment_importance for key, value in treatment_categories_match.items()}
+
 
         if link_type in list(self.G_LINKING_METHODS.keys()):
             # generate counterfactuals
@@ -716,7 +718,7 @@ class CausalSimulator3(object):
         elif link_type in self.O_LINKING_METHODS:
             linking_method = self.O_LINKING_METHODS.get(link_type)
             beta = self.linking_coefs.get(var_name)
-            x_outcome, cf, beta = linking_method(X_covariates, X_effmod, X_treatment, beta=beta)
+            x_outcome, cf, beta = linking_method(X_covariates, X_effmod, X_treatment, treatment_categories_match, beta=beta)
             cf = {col: cf[col] for col in cf.columns}
 
         else:
@@ -1357,7 +1359,7 @@ class CausalSimulator3(object):
         return x_new, beta
 
     @staticmethod
-    def _marginal_structural_model_link(X_covariates, X_effmod, X_treatment, beta=None):
+    def _marginal_structural_model_link(X_covariates, X_effmod, X_treatment, treatment_categories_match, beta=None):
         """
         Generate outcome variable based on marginal structural model (see Hernan and Robin sections 12.4 and 12.5)
 
@@ -1365,6 +1367,7 @@ class CausalSimulator3(object):
             X_covariates (pd.DataFrame): Causing covariates.
             X_effmod (pd.DataFrame): Causing effect modifiers
             X_treatment (pd.Series): Causing treatment variable.
+            treatment_categories_match (dict): Correspondance between original treatment categories and transformed inputs with treatment_importance.
             beta (pd.DataFrame): The coefficients used to generate current variable from it predecessors. Optional.
                                 (num_parents_variables x num_treatment_categories) matrix.
 
@@ -1377,22 +1380,23 @@ class CausalSimulator3(object):
                                          (num_parents_variables x num_treatment_categories) matrix.
         """
         # treatment_categories = np.concatenate([X_treatment[col].unique().astype(int) for col in X_treatment.columns])
-        treatment_categories = X_treatment.unique().astype(int)
+        # treatment_categories = X_treatment.unique().astype(int)
         # cf = pd.DataFrame(data=None, index=X_covariates.index, columns=treatment_categories)
         x_treatment_intercept = pd.Series(data=1, index=X_treatment.index, name=X_treatment.name)
         X_parents = pd.concat([X_covariates, X_effmod, x_treatment_intercept], axis="columns")  # type: pd.DataFrame
         if beta is None:  # no linking coefficients were supplied, create the coefficient matrix to be used
             # create a totally random matrix:
             beta = pd.DataFrame(data=np.random.normal(loc=0.0, scale=4.0,
-                                                      size=(X_parents.columns.size, treatment_categories.size)),
-                                index=X_parents.columns, columns=treatment_categories)
+                                                      size=(X_parents.columns.size, len(treatment_categories_match))),
+                                index=X_parents.columns, columns=treatment_categories_match.values())
             # enforce the same coefficients for the regular covariates (neither treatment nor effect modifiers)
             covariates_coefs = np.tile(np.random.normal(loc=0.0, scale=4.0, size=(X_covariates.columns.size, 1)),
-                                       (1, treatment_categories.size))
+                                       (1, len(treatment_categories_match)))
             beta.loc[X_covariates.columns, :] = covariates_coefs
 
         cf = X_parents.dot(beta)  # type: pd.DataFrame
         x_outcome = robust_lookup(cf, X_treatment)
+        cf = cf.rename(columns={value: key for (key, value) in treatment_categories_match.items()})
         return x_outcome, cf, beta
 
     # ### SAVING DATASET ### #
