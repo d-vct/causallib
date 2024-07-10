@@ -1453,7 +1453,7 @@ class CausalSimulator3(object):
             beta = pd.DataFrame(data=np.random.normal(loc=0.0, scale=4.0, size=(degree, X_parents.columns.size)),
                                 columns=X_parents.columns, index=np.arange(degree))
 
-        result_polynomial = pd.DataFrame(data=None, index=X_parents.index, columns=X_parents.columns)
+        result_polynomial = pd.DataFrame(data=None, index=X_parents.index, columns=X_parents.columns, dtype=float)
         degrees = beta.index.to_series()
         # Apply a polynomial to every parent variable
         for var_name, col in X_parents.items():
