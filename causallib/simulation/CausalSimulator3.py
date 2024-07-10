@@ -471,7 +471,7 @@ class CausalSimulator3(object):
 
         # generate latent continuous covariates - every variable is guaranteed to have a population variance of 1.0
         # X_latent = pd.DataFrame(index=patients_index, columns=self.var_types.index)
-        X = pd.DataFrame(index=patients_index, columns=self.var_types.index)
+        X = pd.DataFrame(index=patients_index, columns=self.var_types.index, dtype=float)
         if X_given is not None:  # if a dataset is given, integrate it to the current dataset being build.
             X.loc[:, X_given.columns] = X_given
             for col in X_given.columns:
