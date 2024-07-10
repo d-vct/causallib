@@ -756,12 +756,6 @@ class CausalSimulator3(object):
         x_outcome, cov_std, noise = self._noise_col(x_outcome, snr=snr)
         cf = {i: self._noise_col(cf[i], snr, cov_std, noise)[0] for i in list(cf.keys())}
 
-        if effect_size is not None:
-            warnings.warn("Stating effect size is not yet supported. Supplying it has no effect on results",
-                          UserWarning)
-            # TODO: support given effect size
-            pass
-
         # aggregate according to type:
         if outcome_type == CATEGORICAL:
             x_outcome, bins = self._discretize_col(x_outcome, prob_category, retbins=True)
@@ -770,13 +764,43 @@ class CausalSimulator3(object):
             bins.iloc[-1] = np.inf
             cf = {i: self._discretize_col(cf[i], prob_category, bins=bins) if has_treatment_parent else cf[i]
                   for i in list(cf.keys())}
+            if effect_size is not None:
+                warnings.warn("Stating effect size is not yet supported. Supplying it has no effect on results",
+                            UserWarning)
+                # TODO: support given effect size
+                pass
 
         elif outcome_type == CONTINUOUS:
+            if effect_size is not None:
+                warnings.warn("Stating effect size is not yet supported. Supplying it has no effect on results",
+                            UserWarning)
+                # TODO: support given effect size
+                mean_ate = cf[1].mean() - cf[0].mean()
+                diff_ate = effect_size - mean_ate
+                cf[1] += diff_ate/2
+                cf[0] -= diff_ate/2
             pass
 
         elif outcome_type == PROBABILITY:
             x_outcome = self._sigmoid(x_outcome)
             cf = {i: self._sigmoid(cf[i]) for i in list(cf.keys())}
+            if effect_size is not None:
+                if effect_size >= -1 and effect_size <= 1:
+                    mean_ate = cf[1].mean() - cf[0].mean()
+                    diff_ate = effect_size - mean_ate
+                    cfs = pd.concat([cf[0], cf[1]], axis=1)
+                    if cfs.min(axis=None) + (1-cfs.max(axis=None)) >= diff_ate:
+                        w = cfs.min(axis=None) / diff_ate
+                        cf[1] += diff_ate * w
+                        cf[0] -= diff_ate *(1-w) 
+                    else:
+                        warnings.warn(f"Stated effect size {effect_size} is not supported. Supplying it has no effect on results",
+                                UserWarning)
+                        # TODO: support given effect size
+                else:
+                    warnings.warn(f"Stated effect size {effect_size} is out of bounds [-1,1]. Supplying it has no effect on results",
+                            UserWarning)
+                    # TODO: support given effect size
 
         elif outcome_type == SURVIVAL:
             if survival_distribution == "expon":
@@ -795,6 +819,12 @@ class CausalSimulator3(object):
                     index=x_outcome.index)
                 if has_treatment_parent else cf[i] for i in list(cf.keys())}
                 # Supplying the random state assures that the resulting outcome and cfs is consistent while sampling rvs
+
+                if effect_size is not None:
+                    warnings.warn("Stating effect size is not yet supported. Supplying it has no effect on results",
+                                UserWarning)
+                    # TODO: support given effect size
+                    pass
             else:
                 raise ValueError("survival distribution: {0}, is not supported".format(survival_distribution))
         else:
@@ -803,6 +833,7 @@ class CausalSimulator3(object):
         if not cf:  # dictionary is empty - outcome variable has no treatment parent
             cf = {"null": pd.DataFrame(data=None, index=X_parents.index, columns=["null"])}
         cf = pd.DataFrame(cf)
+        x_outcome = robust_lookup(cf, X_treatment)
         cf.rename(columns= {0: 0, treatment_importance: 1}, inplace=True)
         return x_outcome, cf, beta
 
