@@ -1005,9 +1005,9 @@ class CausalSimulator3(object):
         columns_names = prob_category.index
         propensity = pd.DataFrame(index=index_names, columns=columns_names)
         # compute propensities:
-        t = x_continuous.quantile(prob_category.iloc[1], interpolation="higher")
+        t = x_continuous.quantile(prob_category.iloc[0], interpolation="higher")
         slope = params.get("slope", 1.0) if params is not None else 1.0
-        cur_propensity = 1.0 / (1 + np.exp(slope * (x_continuous - np.repeat(t, x_continuous.size)).astype(float)))
+        cur_propensity = CausalSimulator3._sigmoid(x_continuous, slope, x_midpoint=t)
         # assign the propensity values:
         propensity.loc[:, columns_names[1]] = cur_propensity
         propensity.loc[:, columns_names[0]] = np.ones(cur_propensity.size) - cur_propensity
@@ -1273,8 +1273,8 @@ class CausalSimulator3(object):
             cf[i].loc[sampled_cf[i].index] = sampled_cf[i]
 
     @staticmethod
-    def _sigmoid(x, slope=1):
-        return 1.0 / (1.0 + np.exp(-slope * x))
+    def _sigmoid(x, slope=1, x_midpoint=0):
+        return 1.0 / (1.0 + np.exp(-slope * (x - x_midpoint)))
 
     def reset_coefficients(self, variables=None):
         """
