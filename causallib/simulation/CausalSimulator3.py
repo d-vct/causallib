@@ -775,8 +775,9 @@ class CausalSimulator3(object):
             pass
 
         elif outcome_type == PROBABILITY:
-            x_outcome = self._sigmoid(x_outcome)
-            cf = {i: self._sigmoid(cf[i]) for i in list(cf.keys())}
+            x_midpoint = x_outcome.quantile(prob_category[0], interpolation="higher") if prob_category is not None else 0.0
+            x_outcome = self._sigmoid(x_outcome, x_midpoint=x_midpoint)
+            cf = {i: self._sigmoid(cf[i], x_midpoint=x_midpoint) for i in list(cf.keys())}
 
         elif outcome_type == SURVIVAL:
             if survival_distribution == "expon":
