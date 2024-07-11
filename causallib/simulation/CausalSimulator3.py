@@ -329,7 +329,7 @@ class CausalSimulator3(object):
                 self.survival_baseline[censor_predecessors] = self.survival_baseline[i]
 
         # self.params = params if params is not None else dict(zip(self.var_names, [None] * self.var_names.size))
-        self.params = params if params is not None else {}
+        self.params = dict(params) if params is not None else {}
 
     # ### Initializing helper functions ### #
     def _convert_scalars_to_vectors(self, x, default_value, x_type):
@@ -648,7 +648,7 @@ class CausalSimulator3(object):
         else:
             params = self.params.get(var_name, {})
             propensity, treatment = generation_method(x_continuous, prob_category, snr=snr, params=params)
-
+            self.params[var_name] = params
         return treatment.astype(int), propensity.astype(float), beta
 
     def generate_outcome_col(self, X_parents, link_type, snr, prob_category, outcome_type, treatment_importance=None,
@@ -1012,6 +1012,8 @@ class CausalSimulator3(object):
         # compute propensities:
         t = x_continuous.quantile(prob_category.iloc[0], interpolation="higher")
         slope = params.get("slope", 1.0) if params is not None else 1.0
+        params["x_midpoint"] = t
+        params["slope"] = slope
         cur_propensity = CausalSimulator3._sigmoid(x_continuous, slope, x_midpoint=t)
         # assign the propensity values:
         propensity.loc[:, columns_names[1]] = cur_propensity
