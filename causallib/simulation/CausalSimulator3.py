@@ -787,6 +787,10 @@ class CausalSimulator3(object):
             params = self.params.get(var_name, {})
             slope = params.get("slope", 1.0) if params is not None else 1.0
             x_midpoint = x_outcome.quantile(prob_category[0], interpolation="higher") if prob_category is not None else 0.0
+            if self.params:
+                self.params[var_name] = {"slope": slope, "x_midpoint": x_midpoint}
+            else:
+                self.params = {var_name: {"slope": slope, "x_midpoint": x_midpoint}}
             x_outcome = self._sigmoid(x_outcome, slope=slope, x_midpoint=x_midpoint)
             cf = {i: self._sigmoid(cf[i], slope=slope, x_midpoint=x_midpoint) for i in list(cf.keys())}
             if effect_size is not None:
