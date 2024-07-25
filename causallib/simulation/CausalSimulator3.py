@@ -776,8 +776,13 @@ class CausalSimulator3(object):
 
         elif outcome_type == PROBABILITY:
             x_midpoint = x_outcome.quantile(prob_category[0], interpolation="higher") if prob_category is not None else 0.0
-            x_outcome = self._sigmoid(x_outcome, x_midpoint=x_midpoint)
-            cf = {i: self._sigmoid(cf[i], x_midpoint=x_midpoint) for i in list(cf.keys())}
+            params = self.params.get(var_name, {})
+            cf_params = {i: params.get(i, {}) for i in list(cf.keys())}
+            for i in list(cf.keys()):
+                max_y = cf_params[i].get("max", 1)
+                min_y = cf_params[i].get("min", 0)
+                cf[i] = self._sigmoid(cf[i], x_midpoint=x_midpoint, min_y=min_y, max_y=max_y)
+            x_outcome = robust_lookup(pd.DataFrame(cf), X_treatment)
 
         elif outcome_type == SURVIVAL:
             if survival_distribution == "expon":
@@ -1242,8 +1247,8 @@ class CausalSimulator3(object):
             cf[i].loc[sampled_cf[i].index] = sampled_cf[i]
 
     @staticmethod
-    def _sigmoid(x, slope=1, x_midpoint=0):
-        return 1.0 / (1.0 + np.exp(-slope * (x - x_midpoint)))
+    def _sigmoid(x, slope=1, x_midpoint=0, min_y=0, max_y=1):
+        return min_y + (1.0 / (1.0 + np.exp(-slope * (x - x_midpoint))) ) * (max_y - min_y) 
 
     def reset_coefficients(self, variables=None):
         """
