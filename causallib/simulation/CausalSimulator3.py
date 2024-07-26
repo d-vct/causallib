@@ -775,7 +775,14 @@ class CausalSimulator3(object):
             pass
 
         elif outcome_type == PROBABILITY:
-            x_midpoint = x_outcome.quantile(prob_category[0], interpolation="higher") if prob_category is not None else 0.0
+            unique_values = x_outcome.unique()
+            # Continuous outcome
+            if len(unique_values) > len(x_outcome) / 10:
+                x_midpoint = x_outcome.quantile(prob_category[0], interpolation="higher") if prob_category is not None else 0.0
+            # Discrete outcome
+            else:
+                idx_float = (len(unique_values) - 1) * prob_category[0]
+                x_midpoint = unique_values[int(idx_float)] * (idx_float % 1) + unique_values[int(np.ceil(idx_float))] * (1 - idx_float % 1)
             params = self.params.get(var_name, {})
             cf_params = {i: params.get(i, {}) for i in list(cf.keys())}
             for i in list(cf.keys()):
