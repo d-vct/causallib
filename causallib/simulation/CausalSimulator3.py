@@ -648,7 +648,7 @@ class CausalSimulator3(object):
         else:
             params = self.params.get(var_name, {})
             propensity, treatment = generation_method(x_continuous, prob_category, snr=snr, params=params)
-
+            self.params[var_name] = params
         return treatment.astype(int), propensity.astype(float), beta
 
     def generate_outcome_col(self, X_parents, link_type, snr, prob_category, outcome_type, treatment_importance=None,
@@ -790,6 +790,8 @@ class CausalSimulator3(object):
                 min_y = cf_params[i].get("min", 0)
                 cf[i] = self._sigmoid(cf[i], x_midpoint=x_midpoint, min_y=min_y, max_y=max_y)
             x_outcome = robust_lookup(pd.DataFrame(cf), X_treatment)
+            self.params[var_name] = params
+            self.params[var_name]["x_midpoint"] = x_midpoint
 
         elif outcome_type == SURVIVAL:
             if survival_distribution == "expon":
@@ -989,6 +991,7 @@ class CausalSimulator3(object):
         t = x_continuous.quantile(prob_category.iloc[0], interpolation="higher")
         slope = params.get("slope", 1.0) if params is not None else 1.0
         cur_propensity = CausalSimulator3._sigmoid(x_continuous, slope, x_midpoint=t)
+        params["x_midpoint"] = t
         # assign the propensity values:
         propensity.loc[:, columns_names[1]] = cur_propensity
         propensity.loc[:, columns_names[0]] = np.ones(cur_propensity.size) - cur_propensity
